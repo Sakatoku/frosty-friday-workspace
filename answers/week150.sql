@@ -27,160 +27,123 @@
 --❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄❄--
 
 -- このチャレンジの詳細
--- [Week 149 - Basic](https://frostyfriday.org/blog/2025/09/26/week-149-basic/)
+-- [Week 150 - Intermediate](https://frostyfriday.org/blog/2025/10/10/week-150-intermediate/)
 
 -- このチャレンジに関連するドキュメント
--- [パイプ演算子(Flow operators)](https://docs.snowflake.com/en/sql-reference/operators-flow)
--- [LATERAL FLATTEN](https://docs.snowflake.com/ja/sql-reference/functions/flatten)
+-- [AI_SIMILARITY](https://docs.snowflake.com/ja/sql-reference/functions/ai_similarity)
+-- [AI_COMPLETE](https://docs.snowflake.com/ja/en/sql-reference/functions/ai_complete)
 
 -- データベースとスキーマを選択
 USE DATABASE FROSTYFRIDAY_DB;
-USE SCHEMA WEEK149;
+USE SCHEMA WEEK150;
 
--- 提供されたコード(データ生成プロシージャ)
-CREATE OR REPLACE PROCEDURE gen_timeseries(start_date DATE, days INTEGER, category STRING, seed INTEGER)
-RETURNS VARIANT
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-PACKAGES = ('snowflake-snowpark-python', 'numpy')
-HANDLER = 'run'
-AS
-$$
-import numpy as np
-import datetime
+-- 提供されたコード
+-- 一部スキーマなどを修正する
+-- CREATE OR REPLACE SCHEMA FROSTYFRIDAY_DB.WEEK150;
+CREATE OR REPLACE TABLE HEADERS_SAMPLE (
+    COMPANY STRING,
+    DOC_ID STRING,
+    HEADER_ORDER INTEGER,
+    HEADER_TEXT STRING
+);
+INSERT INTO HEADERS_SAMPLE (COMPANY, DOC_ID, HEADER_ORDER, HEADER_TEXT) VALUES
+-- Company A
+('AIG', 'A1', 1, '1. Coverage Overview'),
+('AIG', 'A1', 2, '1.1 Policy Benefits'),
+('AIG', 'A1', 3, '2. Exclusions & Limitations'),
+('AIG', 'A1', 4, '3. Claims Process'),
+-- Company B (variants)
+('Zurich', 'Z1', 1, 'Coverage - Overview'),
+('Zurich', 'Z1', 2, 'Policy Benefit(s)'),
+('Zurich', 'Z1', 3, 'Exclusions and Limitations'),
+('Zurich', 'Z1', 4, 'Claims – Process'),
+-- Company C (more variants)
+('Allianz', 'AL1', 1, '01) COVERAGE OVERVIEW'),
+('Allianz', 'AL1', 2, 'Policy: Benefits'),
+('Allianz', 'AL1', 3, 'Exclusions / Limitations'),
+('Allianz', 'AL1', 4, 'Claims Processing'),
+-- Company D (edge cases)
+('AXA', 'AX1', 1, 'Coverage overview & scope'),
+('AXA', 'AX1', 2, 'Benefit of Policy'),
+('AXA', 'AX1', 3, 'Limitations and Exclusions'),
+('AXA', 'AX1', 4, 'Filing a Claim');
+SELECT * FROM HEADERS_SAMPLE ORDER BY COMPANY, DOC_ID, HEADER_ORDER;
 
-def run(session, start_date, days, category, seed):
-    # Make the RNG deterministic for reproducibility
-    rng = np.random.default_rng(int(seed) if seed is not None else 42)
-
-    base = datetime.date.fromisoformat(str(start_date))
-    rows = []
-
-    # Start at 100 and add small Gaussian noise each day
-    value = 100.0
-    for i in range(int(days)):
-        day = base + datetime.timedelta(days=i)
-        value = max(0.0, value + float(rng.normal(0, 3)))  # keep non-negative
-        rows.append({
-            "date": str(day),
-            "category": category,
-            "value": round(value, 2)
-        })
-
-    # Compute a 3-day trailing moving average
-    for i, r in enumerate(rows):
-        window = rows[max(0, i-2):i+1]
-        ma = sum(x["value"] for x in window) / len(window)
-        r["moving_avg"] = round(ma, 2)
-        r["day_index"] = i + 1
-
-    return {
-        "meta": {
-            "start_date": str(base),
-            "days": int(days),
-            "category": category
-        },
-        "rows": rows
-    }
-$$;
-
--- 上記のデータ生成プロシージャの実行例
-CALL gen_timeseries('2025-04-01'::DATE, 7, 'WIDGETS', 123);
--- 以下のJSONが実行結果
--- {
---   "meta": {
---     "category": "WIDGETS",
---     "days": 7,
---     "start_date": "2025-04-01"
---   },
---   "rows": [
---     {
---       "category": "WIDGETS",
---       "date": "2025-04-01",
---       "day_index": 1,
---       "moving_avg": 9.703000000000000e+01,
---       "value": 9.703000000000000e+01
---     },
---     {
---       "category": "WIDGETS",
---       "date": "2025-04-02",
---       "day_index": 2,
---       "moving_avg": 9.648000000000000e+01,
---       "value": 9.593000000000001e+01
---     },
---     {
---       "category": "WIDGETS",
---       "date": "2025-04-03",
---       "day_index": 3,
---       "moving_avg": 9.758000000000000e+01,
---       "value": 9.979000000000001e+01
---     },
---     {
---       "category": "WIDGETS",
---       "date": "2025-04-04",
---       "day_index": 4,
---       "moving_avg": 9.870000000000000e+01,
---       "value": 1.003700000000000e+02
---     },
---     {
---       "category": "WIDGETS",
---       "date": "2025-04-05",
---       "day_index": 5,
---       "moving_avg": 1.011000000000000e+02,
---       "value": 1.031400000000000e+02
---     },
---     {
---       "category": "WIDGETS",
---       "date": "2025-04-06",
---       "day_index": 6,
---       "moving_avg": 1.027900000000000e+02,
---       "value": 1.048700000000000e+02
---     },
---     {
---       "category": "WIDGETS",
---       "date": "2025-04-07",
---       "day_index": 7,
---       "moving_avg": 1.036600000000000e+02,
---       "value": 1.029600000000000e+02
---     }
---   ]
--- }
-
--- 求められている出力例は上記のデータ生成プロシージャをLATERAL FLATTENして構造化しただけと考えてよい
--- TS_DATE
--- CATEGORY
--- VALUE
--- MOVING_AVG
--- DAY_INDEX
-
--- 解法
--- パイプ演算子の後のクエリで前の実行結果を参照するためには${数値}を使う
--- LATERAL FLATTENによる半構造化データの読み取りについてf.valueまではほぼ定型。f.value:{キー}::{型}
-CALL gen_timeseries('2025-04-01'::DATE, 7, 'WIDGETS', 123)
-->> SELECT
-        f.value:date::date AS TS_DATE,
-        f.value:category::STRING AS CATEGORY,
-        f.value:value::FLOAT AS VALUE,
-        f.value:moving_avg::FLOAT AS MOVING_AVG,
-        f.value:day_index::INTEGER AS DAY_INDEX
-    FROM $1, LATERAL FLATTEN(INPUT => $1, PATH => 'rows') f
-    ORDER BY DAY_INDEX;
-
--- 昔ながらの記法だと例えば以下のようにする。ストアドプロシージャの実行結果をRESULT_SCAN()するのが面倒…
-CALL gen_timeseries('2025-04-01'::DATE, 7, 'WIDGETS', 123);
-WITH
-PROC_RESULT (GEN_TIMESERIES) AS (
-  SELECT * FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()))
-)
+-- 各行にIDを付与する
 SELECT
-    f.value:date::date AS TS_DATE,
-    f.value:category::STRING AS CATEGORY,
-    f.value:value::FLOAT AS VALUE,
-    f.value:moving_avg::FLOAT AS MOVING_AVG,
-    f.value:day_index::INTEGER AS DAY_INDEX
-FROM PROC_RESULT, LATERAL FLATTEN(INPUT => PROC_RESULT.GEN_TIMESERIES, PATH => 'rows') f
-ORDER BY DAY_INDEX;
-
--- 例えばLISTの実行結果もそのままSELECTに繋げられる…！
-LIST @SOME_DB.SOME_SCHEMA.SOME_STAGE
-->> SELECT * FROM $1;
+    *,
+    ROW_NUMBER() OVER (ORDER BY COMPANY) AS ROW_NUM,
+FROM HEADERS_SAMPLE
+-- JOINする
+->>
+SELECT
+    *
+FROM (
+    SELECT
+        A.COMPANY,
+        A.DOC_ID,
+        A.HEADER_ORDER,
+        A.HEADER_TEXT,
+        A.ROW_NUM,
+        B.HEADER_TEXT AS REF_HEADER_TEXT,
+        B.ROW_NUM AS REF_ROW_NUM,
+    FROM $1 AS A
+    LEFT OUTER JOIN $1 AS B
+)
+-- HEADER_TEXT同士の類似度スコアを計算して、0.80以上のものだけを残す
+->>
+SELECT
+    *,
+    AI_SIMILARITY(HEADER_TEXT, REF_HEADER_TEXT) AS SIMILARITY,
+FROM $1
+WHERE
+    SIMILARITY > 0.80
+-- 各HEADER_TEXTについて、紐づいたもののうち、一番若いIDをそのHEADER_TEXTが所属するクラスタのIDということにする
+->>
+SELECT
+    MIN(COMPANY) AS COMPANY,
+    MIN(DOC_ID) AS DOC_ID,
+    MIN(HEADER_ORDER) AS HEADER_ORDER,
+    MIN(HEADER_TEXT) AS HEADER_TEXT,
+    MIN(REF_ROW_NUM) AS CLUSTER_ID,
+FROM $1
+GROUP BY HEADER_TEXT
+ORDER BY COMPANY, HEADER_ORDER
+-- CLUSTER_IDごとの代表テキストを抽出するためのプロンプトを生成
+->>
+SELECT
+    CLUSTER_ID,
+    CONCAT(
+        'Generate a crisp canonical label from the text listed below.',
+        'The crisp canonical label consists 3–5 words, no numbering or punctuation.',
+        'You should not output quotation marks or similar characters.',
+        'You must output only the label.',
+        'list: "',
+        ARRAY_TO_STRING(ARRAY_AGG(HEADER_TEXT), '", "'),
+        '"'
+    ) AS PROMPT
+FROM $1
+GROUP BY CLUSTER_ID
+-- 生成したプロンプトでAI_COMPLETEを呼び出す
+->>
+SELECT
+    CLUSTER_ID,
+    AI_COMPLETE('snowflake-arctic', PROMPT)::STRING AS GENERATED_HEADER,
+FROM $1
+-- Snowflake Arcticは先頭に半角スペースを入れがちな性格なので、正規表現で切り出す
+->>
+SELECT
+    CLUSTER_ID,
+    GENERATED_HEADER,
+    REGEXP_SUBSTR(GENERATED_HEADER, '\\s*(.*)', 1, 1, 'e') AS NORMALIZED_HEADER,
+FROM $1
+-- 結合して、完了！
+->>
+SELECT
+    A.COMPANY,
+    A.HEADER_TEXT AS ORIGINAL_HEADER,
+    B.NORMALIZED_HEADER
+FROM $4 AS A
+INNER JOIN $1 AS B
+ON A.CLUSTER_ID = B.CLUSTER_ID
+;
