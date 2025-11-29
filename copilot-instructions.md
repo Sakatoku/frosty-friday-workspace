@@ -25,12 +25,14 @@
 
 ```
 (root)
-├── answers/               # Frosty Fridayの各チャレンジに対する解法
-└── articles/              # Frosty Fridayの各チャレンジに対する解法の解説記事
+├── answers/                    # Frosty Fridayの解答を置くルートディレクトリ
+│   └── FROSTYFRIDAY_WEEK{d}/   # 各チャレンジに対する解答
+└── articles/                   # 各チャレンジに対する解答の解説記事
 
 ## ファイル名規則
 
 本リポジトリでは主要なファイルに対して以下のファイル名規則を採用します。  
 
-- Frosty Fridayの各チャレンジに対する解法：week{d}.sql
-- Frosty Fridayの各チャレンジに対する解法の解説記事：week{d}.md
+- 各チャレンジに対する解答。SQLファイルの場合：week{d}.sql
+- 各チャレンジに対する解答。Notebookファイルの場合：FROSTYFRIDAY_WEEK{d}.ipynb
+- 各チャレンジに対する解答の解説記事：week{d}.md
