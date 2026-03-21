@@ -1,0 +1,247 @@
+╭─ Cortex Code v1.0.37 ───────────────────────────────┬────────────────────────────────╮
+│     ░░░░░░                                          │                                │
+│    ░ ░░░░░░░░                            ░░░░░░     │  Agent Connection:     XX99999 │
+│   ░░░░░░░░░░░░░                         ░░░░░░░░░   │  SQL Connection:       XX99999 │
+│   *        *                   *      ░░░░░░░       │  Warehouse:            N/A     │
+│        ▄ ▄              *                    *      │  Model:                auto    │
+│                                            *        │                                │
+│                      *                              │                                │
+├─────         ───────────────────────────────────────┴────────────────────────────────┤
+│                         C:\Users\akrsa\Desktop\frostyfriday                          │
+╰──────────────────────────────────────────────────────────────────────────────────────╯
+
+ › Plan mode enabled
+   The agent will present a plan before executing actions.
+
+> – connect to this repo from snowflake : https://github.com/Sakatoku/Frosty-Friday/
+  – write a procedure that use the file week91_intermediate_git_stored_procedure/add_1.py
+  – create a stored procedure that can use the code from the .py file as a handler to add 1 to a column.
+
+* I'll explore the repo file and research Snowflake Git integration to plan this out.
+
+✓  WEB_FETCH  https://raw.githubusercontent.com/Sakatoku/Frosty-Friday/main/week91_intermed...
+
+✓  POWERSHELL  cortex search docs "CREATE PROCEDURE python handler git repository stage"
+  ├─ {
+  ├─ "query": "CREATE PROCEDURE python handler git repository stage",
+  └─ ... (2 more lines)
+
+✓  POWERSHELL  cortex search docs "CREATE GIT REPOSITORY snowflake git integration"
+  ├─ {
+  ├─ "query": "CREATE GIT REPOSITORY snowflake git integration",
+  └─ ... (2 more lines)
+
+✓  WEB_FETCH  https://docs.snowflake.com/en/developer-guide/git/git-examples → fetched
+
+✓  WEB_FETCH  https://docs.snowflake.com/en/sql-reference/sql/create-git-repository → fetched
+
+✓  WEB_FETCH  https://docs.snowflake.com/en/developer-guide/git/git-setting-up → fetched
+
+* Now I have all the context needed. Let me present the plan.
+
+Proposed plan:
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────    
+ Context
+
+ The Python file week91_intermediate_git_stored_procedure/add_1.py contains:
+
+   from snowflake.snowpark.functions import col
+
+   def add_one_to_column(session, table_name, column_name):
+       df = session.table(table_name)
+       updated_df = df.withColumn(column_name, col(column_name) + 1)
+       return updated_df
+
+ The repo https://github.com/Sakatoku/Frosty-Friday/ is public, so no credentials/secret are needed.
+
+ Implementation Steps
+
+ Step 1: Create an API Integration (no auth, public repo)
+
+   CREATE OR REPLACE API INTEGRATION frosty_friday_git_integration
+     API_PROVIDER = git_https_api
+     API_ALLOWED_PREFIXES = ('https://github.com/Sakatoku')
+     ENABLED = TRUE;
+
+ Step 2: Create the Git Repository clone
+
+   CREATE OR REPLACE GIT REPOSITORY frosty_friday_repo
+     API_INTEGRATION = frosty_friday_git_integration
+     ORIGIN = 'https://github.com/Sakatoku/Frosty-Friday.git';
+
+ Step 3: Fetch latest from remote
+
+   ALTER GIT REPOSITORY frosty_friday_repo FETCH;
+
+ Step 4: Create the Stored Procedure referencing the .py file
+
+   CREATE OR REPLACE PROCEDURE add_one_to_column(table_name VARCHAR, column_name VARCHAR)
+     RETURNS TABLE()
+     LANGUAGE PYTHON
+     RUNTIME_VERSION = '3.12'
+     PACKAGES = ('snowflake-snowpark-python')
+     IMPORTS = ('@frosty_friday_repo/branches/main/week91_intermediate_git_stored_procedure/add_1.py')
+     HANDLER = 'add_1.add_one_to_column';
+
+ The HANDLER is add_1.add_one_to_column — module name (add_1 from the filename) + function name.
+
+ Step 5: Verify by calling the procedure
+
+   CALL add_one_to_column('<some_table>', '<some_column>');
+
+ Verification
+
+ • Confirm the API integration is created (SHOW API INTEGRATIONS)
+ • Confirm the Git repo is created and fetched (SHOW GIT REPOSITORIES, list files with LS @frosty_friday_repo/branches/main/week91_intermediate_git_stored_procedure/)
+ • Confirm the procedure is created (SHOW PROCEDURES LIKE 'ADD_ONE_TO_COLUMN')
+ • Call the procedure on a test table to verify it works
+
+ Critical Files / Objects
+
+ • week91_intermediate_git_stored_procedure/add_1.py — The Python handler file in the Git repo
+ • API integration frosty_friday_git_integration — Allows Snowflake to access GitHub
+ • Git repository frosty_friday_repo — Snowflake clone of the GitHub repo
+ • Stored procedure add_one_to_column — The procedure to create
+
+ Note: Creating the API integration requires ACCOUNTADMIN or a role with CREATE INTEGRATION privilege. If that's not available, I'll need you to grant it or run that step yourself.
+
+✓  EXIT_PLAN_MODE 
+
+✓  SNOWFLAKE_SQL_EXECUTE  Create API integration for public GitHub repo access
+  Connection: XX99999
+  SQL Result (1 rows × 1 cols)
+  ┌─────┬────────────────────────────────┐
+  │   # │ status                         │
+  ├─────┼────────────────────────────────┤
+  │   1 │ Integration FROSTY_FRIDAY_G... │
+  └─────┴────────────────────────────────┘
+
+×  SNOWFLAKE_SQL_EXECUTE  Create Git repository clone from Frosty Friday GitHub repo
+  Connection: XX99999
+  └─ Error executing SQL: Cannot perform CREATE GIT REPOSITORY. This session does not have a current database. Call 'USE DATABASE', or use a qualified name.
+
+* Need to set a database/schema context first. Let me check what's available.
+
+✓  SNOWFLAKE_SQL_EXECUTE  Check current context and available databases
+  Connection: XX99999
+  SQL Result (1 rows × 4 cols)
+  ┌─────┬────────────────────┬──────────────────┬────────────────┬─────────────────────┐
+  │   # │ CURRENT_DATABASE() │ CURRENT_SCHEMA() │ CURRENT_ROLE() │ CURRENT_WAREHOUSE() │
+  ├─────┼────────────────────┼──────────────────┼────────────────┼─────────────────────┤
+  │   1 │ None               │ None             │ POWERUSER      │ COMPUTE_WH          │
+  └─────┴────────────────────┴──────────────────┴────────────────┴─────────────────────┘
+
+✓  ASK_USER_QUESTION 
+
+✓  SNOWFLAKE_SQL_EXECUTE  List available databases
+  Connection: XX99999
+  SQL Result (11 rows × 13 cols) [ctrl+t to navigate]
+  ┌──────┬────────────────────────────────┬─────────────────┬────────────┬────────────┬────────┐
+  │    # │ created_on                     │ name            │ is_default │ is_current │ origin │
+  ├──────┼────────────────────────────────┼─────────────────┼────────────┼────────────┼────────┤
+  │    1 │ "2025-10-11 06:17:24.663 -0... │ ADMIN_DB        │ N          │ N          │        │
+  │    2 │ "2025-10-11 06:01:02.141 -0... │ DEFAULT_DB      │ N          │ N          │        │
+  │    3 │ "2025-11-23 06:16:25.168 -0... │ FROSTYFRIDAY_DB │ N          │ N          │        │
+  └──────┴────────────────────────────────┴─────────────────┴────────────┴────────────┴────────┘
+  Rows 1-3/11 | Cols 1-5/13
+
+* I see FROSTYFRIDAY_DB — that looks like a perfect fit. Let me use that.
+
+✓  SNOWFLAKE_SQL_EXECUTE  Show schemas in FROSTYFRIDAY_DB
+  Connection: XX99999
+  SQL Result (6 rows × 14 cols) [ctrl+t to navigate]
+  ┌─────┬────────────────────────────────┬────────────────────┬────────────┬────────────┐
+  │   # │ created_on                     │ name               │ is_default │ is_current │
+  ├─────┼────────────────────────────────┼────────────────────┼────────────┼────────────┤
+  │   1 │ "2026-03-18 22:39:21.578 -0... │ INFORMATION_SCHEMA │ N          │ N          │
+  │   2 │ "2025-11-23 06:16:25.204 -0... │ PUBLIC             │ N          │ N          │
+  │   3 │ "2025-11-29 07:21:13.952 -0... │ WEEK112            │ N          │ N          │
+  └─────┴────────────────────────────────┴────────────────────┴────────────┴────────────┘
+  Rows 1-3/6 | Cols 1-4/14
+
+✓  SNOWFLAKE_SQL_EXECUTE  Create Git repository clone in FROSTYFRIDAY_DB.PUBLIC
+  Connection: XX99999
+  SQL Result (1 rows × 1 cols)
+  ┌─────┬────────────────────────────────┐
+  │   # │ status                         │
+  ├─────┼────────────────────────────────┤
+  │   1 │ Git Repository FROSTY_FRIDA... │
+  └─────┴────────────────────────────────┘
+
+✓  SNOWFLAKE_SQL_EXECUTE  Fetch latest from remote Git repo
+  Connection: XX99999
+  SQL Result (1 rows × 1 cols)
+  ┌─────┬────────────────────────────────┐
+  │   # │ status                         │
+  ├─────┼────────────────────────────────┤
+  │   1 │ Git Repository FROSTY_FRIDA... │
+  └─────┴────────────────────────────────┘
+
+✓  SNOWFLAKE_SQL_EXECUTE  Verify the Python file exists in the repo clone
+  Connection: XX99999
+  SQL Result (1 rows × 5 cols) [ctrl+t to navigate]
+  ┌─────┬────────────────────────────────┬───────┬───────┬────────────────────────────────┐
+  │   # │ name                           │ size  │ md5   │ sha1                           │
+  ├─────┼────────────────────────────────┼───────┼───────┼────────────────────────────────┤
+  │   1 │ frosty_friday_repo/branches... │ 226   │ None  │ 27d5ac1ccad00b978ae759bfce8... │
+  └─────┴────────────────────────────────┴───────┴───────┴────────────────────────────────┘
+  Rows 1-1/1 | Cols 1-4/5
+
+* File confirmed. Now creating the stored procedure.
+
+✓  SNOWFLAKE_SQL_EXECUTE  Create stored procedure using add_1.py as handler
+  Connection: XX99999
+  SQL Result (1 rows × 1 cols)
+  ┌─────┬────────────────────────────────┐
+  │   # │ status                         │
+  ├─────┼────────────────────────────────┤
+  │   1 │ Function ADD_ONE_TO_COLUMN ... │
+  └─────┴────────────────────────────────┘
+
+* Now let me verify by creating a quick test table and calling the procedure.
+
+✓  SNOWFLAKE_SQL_EXECUTE  Create test table and verify stored procedure works
+  Connection: XX99999
+  SQL Result (1 rows × 1 cols)
+  ┌─────┬─────────────────────────┐
+  │   # │ number of rows inserted │
+  ├─────┼─────────────────────────┤
+  │   1 │ 3                       │
+  └─────┴─────────────────────────┘
+
+✓  SNOWFLAKE_SQL_EXECUTE  Call the stored procedure to verify it works
+  Connection: XX99999
+  SQL Result (3 rows × 2 cols)
+  ┌─────┬───────┬───────┐
+  │   # │ ID    │ VALUE │
+  ├─────┼───────┼───────┤
+  │   1 │ 1     │ 11    │
+  │   2 │ 2     │ 21    │
+  │   3 │ 3     │ 31    │
+  └─────┴───────┴───────┘
+
+* Everything is set up and verified. Here's a summary of what was created in FROSTYFRIDAY_DB.PUBLIC:
+
+  ┌──────────────────┬────────────────────────────────────────────────────────────┐
+  │ Object           │ Name                                                       │
+  ├──────────────────┼────────────────────────────────────────────────────────────┤
+  │ API Integration  │ FROSTY_FRIDAY_GIT_INTEGRATION                              │
+  ├──────────────────┼────────────────────────────────────────────────────────────┤
+  │ Git Repository   │ FROSTY_FRIDAY_REPO (cloned from GitHub)                    │
+  ├──────────────────┼────────────────────────────────────────────────────────────┤
+  │ Stored Procedure │ ADD_ONE_TO_COLUMN(table_name VARCHAR, column_name VARCHAR) │
+  └──────────────────┴────────────────────────────────────────────────────────────┘
+
+  The procedure was tested — calling it with VALUE column values [10, 20, 30] correctly returned [11, 21, 31].
+
+  Usage:
+
+    CALL FROSTYFRIDAY_DB.PUBLIC.add_one_to_column('<fully_qualified_table>', '<column_name>');
+    ```Note that the procedure returns the result as a table (it doesn't overwrite the source table). If you need it to update in-place, let me know and I can adjust the approach.
+
+╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── Implementing Snowflake Git Integration Stored Procedure ──╮
+│ › Type your message...                                                                                                                                                                                                                                                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+⏵⏵ confirm actions (shift+tab)  |  plan mode: off (ctrl+p)                                                                                                                                                                                                                                 ⧉ XX99999
+view: compact (ctrl+o to cycle) • ? for help
