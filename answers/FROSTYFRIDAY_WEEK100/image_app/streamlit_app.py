@@ -37,3 +37,6 @@ image_bytes = bytes.fromhex(hex_string)
 # 画像を表示
 st.write("filename: ", selected_image)
 st.image(image_bytes)
+
+st.divider()
+st.page_link("pages/multimodal.py", label="後編へ続く", icon="🔍")
